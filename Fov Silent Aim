@@ -1,0 +1,175 @@
+--by Red
+ 
+local StarterGui = game:GetService("StarterGui")
+ 
+local imageId = "rbxassetid://16122255392"
+
+StarterGui:SetCore("SendNotification", {
+    Title = "FOV silent aim",
+    Text = "By Red",
+    Icon = imageId,
+    Duration = 3
+})
+ 
+local S = {
+    F = 45, --AIM:HumanoidRootPart FOV
+    P = 20, --AIM:HEAD FOV
+    C = true
+}
+ 
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+ 
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game.Workspace
+local CurrentCamera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+ 
+local function GetPlayersInFOV(maxDistance, partName)
+    local playersInFOV = {}
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(partName) then
+            local part = player.Character:FindFirstChild(partName)
+            if part then
+                local position, onScreen = CurrentCamera:WorldToViewportPoint(part.Position)
+                local distance = (Vector2.new(position.X, position.Y) - Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)).Magnitude
+                
+                if distance <= maxDistance and onScreen then
+                    table.insert(playersInFOV, player)
+                end
+            end
+        end
+    end
+    
+    return playersInFOV
+end
+ 
+local playersInFOV = {}
+local playersInSmallFOV = {}
+local fovCircle = Drawing.new("Circle")
+local smallFovCircle = Drawing.new("Circle")
+local outerCircle = Drawing.new("Circle")
+local lines = {}
+ 
+fovCircle.Visible = true
+fovCircle.Color = Color3.fromHSV(tick() % 5/ 5, 1, 1)
+fovCircle.Filled = false
+ 
+smallFovCircle.Visible = true
+smallFovCircle.Color = Color3.new(1, 1, 1)
+smallFovCircle.Filled = false
+ 
+outerCircle.Visible = false
+ 
+local function UpdateLines()
+    for _, line in pairs(lines) do
+        line:Remove()
+    end
+    lines = {}
+    
+    local playerCount = #playersInFOV
+    if playerCount > 0 then
+        for i, player in ipairs(playersInFOV) do
+            local line = Drawing.new("Line")
+            line.Visible = true
+            if i == 1 then
+                line.Color = Color3.new(1, 0, 0)
+            else
+                line.Color = Color3.new(1, 1, 1)
+            end
+            table.insert(lines, line)
+        end
+    end
+end
+ 
+RunService.RenderStepped:Connect(function()
+    fovCircle.Radius = S.F
+    fovCircle.Position = Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)
+    
+    smallFovCircle.Radius = S.P
+    smallFovCircle.Position = Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)
+    
+    outerCircle.Position = fovCircle.Position
+    outerCircle.Radius = fovCircle.Radius + 20
+    outerCircle.Thickness = 0.4
+ 
+    playersInFOV = GetPlayersInFOV(S.F, "HumanoidRootPart")
+    playersInSmallFOV = GetPlayersInFOV(S.P, "Head")
+    
+    UpdateLines()
+    
+    fovCircle.Color = Color3.fromHSV(tick() % 5/ 5, 1, 1)
+    
+    for i, player in ipairs(playersInFOV) do
+        local line = lines[i]
+        if player and player.Character then
+            local head = player.Character["Head"]
+            if head then
+                local targetPos, onScreen = CurrentCamera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    line.From = Vector2.new(CurrentCamera.ViewportSize.X / 2, CurrentCamera.ViewportSize.Y / 2)
+                    line.To = Vector2.new(targetPos.X, targetPos.Y)
+                    line.Visible = true
+                else
+                    line.Visible = false
+                end
+            else
+                line.Visible = false
+            end
+        else
+            line.Visible = false
+        end
+    end
+    
+    for _, player in ipairs(playersInSmallFOV) do
+        if player and player.Character then
+            local head = player.Character["Head"]
+            if head then
+                local targetPos, onScreen = CurrentCamera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    Mouse.Target = head
+                end
+            end
+        end
+    end
+end)
+ 
+local originalMetatable; originalMetatable = hookmetamethod(game, "__namecall", function(Self, ...)
+    local Args = {...}
+    local Method = getnamecallmethod()
+    
+    if not checkcaller() and Method == "FireServer" then
+        if Self.Name == "0+." then
+            Args[1].MessageWarning = {}
+            Args[1].MessageError = {}
+            Args[1].MessageOutput = {}
+            Args[1].MessageInfo = {}
+        elseif Self.Name == "RemoteEvent" and Args[2] == "Bullet" and Method == "FireServer" then
+            local closestPlayer
+            if #playersInSmallFOV > 0 then
+                closestPlayer = playersInSmallFOV[1]
+            elseif #playersInFOV > 0 then
+                closestPlayer = playersInFOV[1]
+            end
+            
+            if closestPlayer and closestPlayer.Character and closestPlayer.Character.Humanoid and closestPlayer.Character.Humanoid.Health ~= 0 then
+                local part
+                if #playersInSmallFOV > 0 then
+                    part = closestPlayer.Character["Head"]
+                elseif #playersInFOV > 0 then
+                    part = closestPlayer.Character["HumanoidRootPart"]
+                end
+                
+                if part then
+                    Args[3] = closestPlayer.Character
+                    Args[4] = part
+                    Args[5] = part.Position
+                end
+            end
+        end
+    end
+    
+    return originalMetatable(Self, unpack(Args))
+end)
+ 
